@@ -1,8 +1,9 @@
 pragma solidity ^0.4.19;
 contract TicTacToe {
+
   using strings for *;
   struct Game {
-    uint8[9] board;
+    uint8[3][3] board;
     address player1;
     address player2;
     uint8 turn; // 1 = first player turn, 2 = second player turn
@@ -11,18 +12,17 @@ contract TicTacToe {
   mapping(address => Game[]) _playerToGame;
   uint64 gameId = 0;
   function newGame(address _player2) public returns (uint64){
-    uint8[9] memory board = [0,0,0,0,0,0,0,0,0];
+    uint8[3][3] memory board = [[0,0,0],[0,0,0],[0,0,0]];
     Game memory g = Game(board, msg.sender, _player2, 1);
 
     _games[gameId] = g;
     return gameId++;
   }
-  string constant emptyCell = " |";
-  string constant xCell = "X|";
   function printStatus(Game g) internal returns (string) {
     string memory res = "";
-    for(uint8 i = 0; i < 9; i++) {
-        uint8 elem = g.board[i];
+    for(uint8 i = 0; i < 3; i++) {
+        for(uint8 j = 0; j < 3; j++) {
+        uint8 elem = g.board[i][j];
         if(elem == 0) {
             res = res.toSlice().concat(" |".toSlice());
         } else if(elem == 1) {
@@ -30,15 +30,58 @@ contract TicTacToe {
         } else {
           res = res.toSlice().concat("O|".toSlice());
         }
-        if(i % 3 == 0) {
+        if(i == 2 || i == 5) {
             res = res.toSlice().concat("\n".toSlice());
+        }
         }
     }
     return res;
   }
 
-  function nextMove(uint64 id, uint8 move) public returns (string) {
-      Game memory g = _games[id];
+  function checkVictory(Game g, uint8 turn, uint8 x, uint8 y) internal pure returns (bool) {
+      // Row victory
+      for(uint8 i = 0; i < 3; i++) {
+         if(g.board[i][y] != turn) {
+            break;
+         }
+         if(i == 2) {
+            return true;
+         }
+      }
+
+      // Col victory
+      for(i = 0; i < 3; i++) {
+         if(g.board[x][i] != turn) {
+            break;
+         }
+         if(i == 2) {
+            return true;
+         }
+      }
+
+      // No point in checking diag if the player did not move diagonally
+      if(x == y) {
+        for(i = 0; i < 3; i++) {
+            if(g.board[i][i] != turn) {
+                break;
+            }
+            if(i == 2) {
+                return true;
+            }
+        }
+      }
+      for(i = 0; i < 3; i++){
+            if(g.board[i][(2)-i] != turn)
+                    break;
+            if(i == 2){
+                    return true;
+                }
+    }
+
+      return false;
+  }
+  function nextMove(uint64 id, uint8 moveX, uint8 moveY) public returns (string) {
+      Game g = _games[id];
       // Sanity checks
       if(g.turn != 1 && msg.sender == g.player1) {
           return "Wrong 1";
@@ -47,11 +90,17 @@ contract TicTacToe {
           return "Wrong 2";
       }
       // Only play on an empty cell
-      if(g.board[move] != 0) {
+      if(g.board[moveX][moveY] != 0) {
           return "Wrong 3";
       }
-      g.board[move] = g.turn;
+      g.board[moveX][moveY] = g.turn;
       // check for victory;
+      if(checkVictory(g, g.turn, moveX, moveY)) {
+          delete _games[id];
+          return "VICTORY!";
+      }
+      // Flip the turn
+      g.turn = 3 - g.turn;
       return printStatus(g);
   }
 
