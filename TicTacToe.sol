@@ -7,19 +7,37 @@ contract TicTacToe {
     address player1;
     address player2;
     uint8 turn; // 1 = first player turn, 2 = second player turn
-    uint256 value; // Stake for the game
-    uint8 moveCount;
+    uint256 bets;
+    bool p2HasPaid;
   }
   mapping(uint64 => Game) _games;
-  mapping(address => Game[]) _playerToGame;
+  mapping(address => uint64[]) _playerToGame;
+  address _freePlayer;
   uint64 gameId = 0;
-  function newGame(address _player2) public returns (uint64){
+  function newGame(address _player2) public payable returns (uint64){
+    require(msg.value > 0);
     uint8[3][3] memory board = [[0,0,0],[0,0,0],[0,0,0]];
-    Game memory g = Game(board, msg.sender, _player2, 1, msg.value, 0);
+    Game memory g = Game(board, msg.sender, _player2, 1, msg.value, false);
 
     _games[gameId] = g;
+    _playerToGame[msg.sender].push(gameId);
+    _playerToGame[_player2].push(gameId);
     return gameId++;
   }
+
+  function enterMatchMaking() public payable returns (string) {
+      if(_freePlayer == 0) {
+          _freePlayer = msg.sender;
+          return "You have been put in the queue!";
+      }
+      newGame(_freePlayer);
+      return "Game created, use getGame() to get your games";
+  }
+
+  function getGame() public view returns (uint64[]) {
+      return _playerToGame[msg.sender];
+  }
+
   function printStatus(Game g) internal returns (string) {
     string memory res = "";
     for(uint8 i = 0; i < 3; i++) {
@@ -71,7 +89,7 @@ contract TicTacToe {
         }
     }
     for(i = 0; i < 3; i++){
-        if(g.board[i][(2)-i] != turn)
+        if(g.board[i][2-i] != turn)
             break;
         if(i == 2){
             return true;
@@ -79,9 +97,8 @@ contract TicTacToe {
     }
     return false;
   }
-  function nextMove(uint64 id, uint8 moveX, uint8 moveY) public returns (string) {
-      Game g = _games[id];
-
+  function nextMove(uint64 id, uint8 moveX, uint8 moveY) payable public returns (string) {
+      Game storage g = _games[id];
       // Sanity checks
       if(g.turn != 1 && msg.sender == g.player1) {
           return "You're not player 1 of this game";
@@ -89,6 +106,15 @@ contract TicTacToe {
       if(g.turn != 2  && msg.sender == g.player2) {
           return "You're not player 2 of this game";
       }
+      // Let's ensure that player 2 paid before playing
+      if(g.turn == 2 && !g.p2HasPaid) {
+        if(msg.value == 0) {
+          return "Player 2 needs to place a bet in order to play";
+        }
+        g.p2HasPaid = true;
+      }
+      // Any value we get here is added to the total Stakes
+      g.bets += msg.value;
       // Only play on an empty cell
       if(g.board[moveX][moveY] != 0) {
           return "Cell is not empty, cannot play";
@@ -96,15 +122,13 @@ contract TicTacToe {
       g.board[moveX][moveY] = g.turn;
       // check for victory;
       if(checkVictory(g, g.turn, moveX, moveY)) {
-          if(msg.sender == g.player1) {
-              g.player2.transfer(g.value);
-          }
+          msg.sender.transfer(g.bets);
           delete _games[id];
           return "VICTORY!";
       }
       // Flip the turn
       g.turn = 3 - g.turn;
-      var emptyCount = 0;
+      uint8 emptyCount = 0;
       for(uint8 i = 0; i < 3; i++) {
           for(uint8 j = 0; j < 3; j++) {
               if(g.board[i][j] == 0) {
@@ -118,7 +142,6 @@ contract TicTacToe {
 
       return printStatus(g);
   }
-
 }
 
 library strings {
